@@ -36,26 +36,6 @@ case class Param[A](name: SegmentType.Variable, converter: SegmentDecoder[A])
 
 def param[A](name: String)(using S: SegmentDecoder[A]) = Param(SegmentType.Variable(name), S)
 
-type Elem[X <: Tuple] = X match {
-  case EmptyTuple => Root.type
-  case x *: xs =>
-  x match {
-    case String => Static[xs]
-    case Param[y] => Variable[y, xs]
-  }
-}
-
-def hlinx[T <: Tuple](t: T): Elem[T] = {
-  t match {
-    case _: EmptyTuple => Root
-    case t: (x *: xs) =>
-      t.head match {
-        case head: String => Static(hlinx[xs](t.tail).asInstanceOf[HLinx[xs]], SegmentType.Static(head))
-        case head: Param[t] => Variable(hlinx(t.tail).asInstanceOf[HLinx[xs]], head.name, head.converter)
-      }
-  }
-}
-
 sealed trait HLinx[T <: Tuple] {
   def extract(uri: Uri.Path): Either[CaptureFailure, T] =
     extractImpl(uri.segments.toList.reverse)

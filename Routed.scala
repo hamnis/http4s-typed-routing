@@ -32,9 +32,13 @@ object Routed {
           }
     }
 
-  def route[F[_], A, T <: Tuple](template: HLinx[T]) = BuilderStep1[F, A, T](template)
+  def builder[F[_], A] = BuilderStep0[F, A]()
 
-  def builder[F[_], A] = PartiallyApplied[F, A]()
+  def httpRoutes[F[_]] = BuilderStep0[F, Unit]()
+
+  case class BuilderStep0[F[_], A]() {
+    def apply[T <: Tuple](linx: HLinx[T]): BuilderStep1[F, A, T] = BuilderStep1(linx)
+  }
 
   sealed trait WithBuilderStep2[F[_], A, T <: Tuple] {
     def withMethod(method: Method, routed: Routed[F, A, T]): BuilderStep2[F, A, T]
@@ -46,10 +50,6 @@ object Routed {
     def put(routed: Routed[F, A, T]) = withMethod(Method.PUT, routed)
 
     def delete(routed: Routed[F, A, T]) = withMethod(Method.DELETE, routed)
-  }
-
-  case class PartiallyApplied[F[_], A]() {
-    def apply[T <: Tuple](linx: HLinx[T]): BuilderStep1[F, A, T] = BuilderStep1(linx)
   }
 
   case class BuilderStep1[F[_], A, T <: Tuple](template: HLinx[T]) extends WithBuilderStep2[F, A, T] {

@@ -21,7 +21,7 @@ object Main extends IOApp {
     EmberServerBuilder.default[IO]
       .withPort(port"8080")
       .withHttpApp(
-        Routed.builder[IO, Unit](Root / "hello" / param[String]("who"))
+        Routed.httpRoutes[IO](Root / "hello" / param[String]("who"))
           .get(
             ContextRoutes {
               case ContextRequest(((), ctx), req) =>

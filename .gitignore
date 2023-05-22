@@ -1,0 +1,10 @@
+.idea/
+target/
+.ensime
+release.sbt
+.metals
+.bloop
+out
+metals.sbt
+.bsp/
+.scala-build

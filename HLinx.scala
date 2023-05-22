@@ -36,11 +36,22 @@ case class Param[A](name: SegmentType.Variable, converter: SegmentDecoder[A])
 
 def param[A](name: String)(using S: SegmentDecoder[A]) = Param(SegmentType.Variable(name), S)
 
+case class Template(value: List[SegmentType]) {
+  def asString: String = value.map {
+    case SegmentType.Static(value) => value
+    case SegmentType.Variable(value) => s"{$value}"
+  }.mkString("/", "/", "")
+}
+
+object Template {
+  given Ordering[Template] = Ordering.by[Template, List[SegmentType]](_.value)(Ordering.Implicits.seqOrdering)
+}
+
 sealed trait HLinx[T <: Tuple] {
   def extract(uri: Uri.Path): Either[CaptureFailure, T] =
     extractImpl(uri.segments.toList.reverse)
 
-  lazy val asList = {
+  lazy val template = Template({
     @tailrec def go(e: HLinx[_], list: List[SegmentType]): List[SegmentType] =
       e match {
         case Root => list
@@ -49,7 +60,7 @@ sealed trait HLinx[T <: Tuple] {
       }
 
     go(this, Nil)
-  }
+  })
 
   private[hlinx] def extractImpl(path: List[Uri.Path.Segment]): Either[CaptureFailure, T]
 
@@ -63,11 +74,6 @@ sealed trait HLinx[T <: Tuple] {
   def /(segment: String) = Static(this, SegmentType.Static(segment))
 
   def /[A](param: Param[A]) = Variable(this, param.name, param.converter)
-
-  def template: String = asList.map {
-    case SegmentType.Static(value) => value
-    case SegmentType.Variable(value) => s"{$value}"
-  }.mkString("/", "/", "")
 }
 
 case object Root extends HLinx[EmptyTuple] {

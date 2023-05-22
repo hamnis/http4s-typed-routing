@@ -27,7 +27,7 @@ object Routed {
                 _ => OptionT.some[F](Response[F](Status.MethodNotAllowed).putHeaders(Allow(methods.keySet)))
               )
             )
-            val templateContext = RouteContext(value)
+            val templateContext = RouteContext(value, template.template)
             route(ContextRequest(a -> templateContext, req))
           }
     }
@@ -70,8 +70,8 @@ object Routed {
   }
 }
 
-case class RouteContext[T](pathType: T) {
+case class RouteContext[T](context: T, template: Template) {
   inline def to[A](using m: Mirror.ProductOf[A]): RouteContext[A] =
-    pathType match
-      case t: m.MirroredElemTypes => RouteContext(m.fromTuple(t))
+    context match
+      case t: m.MirroredElemTypes => RouteContext(m.fromTuple(t), template)
 }

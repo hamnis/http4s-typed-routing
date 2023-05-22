@@ -26,7 +26,7 @@ object Main extends IOApp {
             ContextRoutes {
               case ContextRequest(((), ctx), req) =>
                 val greeter = ctx.to[Greeter]
-                OptionT.some[IO](Response[IO]().withEntity(s"Hello ${greeter.pathType.who}"))
+                OptionT.some[IO](Response[IO]().withEntity(s"Hello ${greeter.context.who}"))
             }
           ).buildHttpRoutes.orNotFound
       )

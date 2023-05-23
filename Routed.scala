@@ -3,7 +3,6 @@ package hlinx
 import cats.*
 import cats.syntax.all.*
 import cats.data.{Kleisli, OptionT}
-import cats.effect.Sync
 import cats.effect.std.Console
 import org.http4s.Uri.Path
 import org.http4s.headers.Allow
@@ -17,38 +16,7 @@ case class Route[F[_], A](template: Template, methods: Set[Method], route: Conte
   def report = s"${template.asString} (${methods.toList.sorted(Method.catsInstancesForHttp4sMethod.toOrdering).mkString(",")})"
 }
 
-type Routed[F[_], A, T] = ContextRoutes[RouteContext[T, A], F]
-
-object Routed {
-  def compile[F[_] : Monad, A, T <: Tuple, S](template: HLinx[T], methods: Map[Method, Routed[F, A, S]], toS: T => S): Route[F, A] =
-    Route(template.template, methods.keySet, ContextRoutes[A, F] {
-      case ContextRequest(a, req) =>
-        val path = req.pathInfo
-        template.extract(path) match
-          case Left(CaptureFailure.NotFound) => OptionT.none
-          case Left(m: CaptureFailure.MissingPathParam) =>
-            OptionT.some[F](Response[F](Status.BadRequest).withEntity(m.errorMessage))
-          case Left(m: CaptureFailure.PathParamConvertFailure) =>
-            OptionT.some[F](Response[F](Status.BadRequest).withEntity(m.errorMessage)) //todo: this needs work
-          case Right(value) => {
-            val route: Routed[F, A, S] =
-              methods.getOrElse(
-                req.method,
-                Routed.response(
-                  Response[F](Status.MethodNotAllowed).putHeaders(Allow(methods.keySet))
-                )
-              )
-            val templateContext = RouteContext(a, toS(value), template.template)
-            val previous = req.attributes.lookup(Request.Keys.PathInfoCaret).getOrElse(0)
-
-            route(ContextRequest(templateContext, req.withAttribute(Request.Keys.PathInfoCaret, previous + path.segments.size)))
-          }
-    })
-
-  def apply[F[_], A, T](run: ContextRequest[F, RouteContext[T, A]] => F[Response[F]])(using Functor[F]): Routed[F, A, T] = Kleisli(run).mapF(OptionT.liftF)
-
-  def response[F[_], A, T](response: Response[F])(using Applicative[F]): Routed[F, A, T] = Kleisli(_ => OptionT.some[F](response))
-
+object Route {
   def builder[F[_], A](using Monad[F]) = BuilderStep0[F, A](Nil)
 
   def httpRoutes[F[_]](using Monad[F]) = BuilderStep0[F, Unit](Nil)
@@ -98,4 +66,39 @@ object Routed {
 
     def build(toS: T => S)(using m: Monad[F]): Route[F, A] = Routed.compile(template, methods, toS)
   }
+}
+
+type Routed[F[_], A, T] = ContextRoutes[RouteContext[T, A], F]
+
+object Routed {
+  def compile[F[_] : Monad, A, T <: Tuple, S](template: HLinx[T], methods: Map[Method, Routed[F, A, S]], toS: T => S): Route[F, A] =
+    Route(template.template, methods.keySet, ContextRoutes[A, F] {
+      case ContextRequest(a, req) =>
+        val path = req.pathInfo
+        template.extract(path) match
+          case Left(CaptureFailure.NotFound) => OptionT.none
+          case Left(m: CaptureFailure.MissingPathParam) =>
+            OptionT.some[F](Response[F](Status.BadRequest).withEntity(m.errorMessage))
+          case Left(m: CaptureFailure.PathParamConvertFailure) =>
+            OptionT.some[F](Response[F](Status.BadRequest).withEntity(m.errorMessage)) //todo: this needs work
+          case Right(value) => {
+            val route: Routed[F, A, S] =
+              methods.getOrElse(
+                req.method,
+                Routed.response(
+                  Response[F](Status.MethodNotAllowed).putHeaders(Allow(methods.keySet))
+                )
+              )
+            val templateContext = RouteContext(a, toS(value), template.template)
+            val previous = req.attributes.lookup(Request.Keys.PathInfoCaret).getOrElse(0)
+
+            route(ContextRequest(templateContext, req.withAttribute(Request.Keys.PathInfoCaret, previous + path.segments.size)))
+          }
+    })
+
+  def apply[F[_], A, T](run: ContextRequest[F, RouteContext[T, A]] => F[Response[F]])(using Functor[F]): Routed[F, A, T] = Kleisli(run).mapF(OptionT.liftF)
+
+  def httpRoutes[F[_], T](using Functor[F]) = apply[F, Unit, T] _
+
+  def response[F[_], A, T](response: Response[F])(using Applicative[F]): Routed[F, A, T] = Kleisli(_ => OptionT.some[F](response))
 }

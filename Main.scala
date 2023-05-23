@@ -19,13 +19,13 @@ object Main extends IOApp {
   case class Greeter(who: String)
 
   override def run(args: List[String]): IO[ExitCode] = {
-    val builder = Routed.httpRoutes[IO]
+    val getDynamicRoute = Routed.httpRoutes[IO, Greeter] {
+      r => IO(Response[IO]().withEntity(s"Hello ${r.context.linx.who}"))
+    }
+
+    val builder = Route.httpRoutes[IO]
       .dynamic[Greeter](Root / "hello" / param[String]("who"))(
-        _.get(
-          Routed {
-            case ContextRequest(ctx, req) =>
-              IO(Response[IO]().withEntity(s"Hello ${ctx.linx.who}"))
-          }).post(
+        _.get(getDynamicRoute).post(
           Routed {
             case ContextRequest(ctx, req) =>
               req.as[String].flatMap(msg =>

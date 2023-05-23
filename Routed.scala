@@ -33,39 +33,19 @@ object Handler {
 
   def typed[F[_], A](using Functor[F]) = TypedPartiallyApplied[F, A]()
 
-  /*inline def typed[F[_], A, T, S <: Product](run: ContextRequest[F, RouteContext[S, A]] => F[Response[F]])(using f: Functor[F], m: Mirror.ProductOf[S]): Handler[F, RouteContext[T, A]] =
-    Handler.full[F, RouteContext[T, A]] {
-      case r@ContextRequest(ctx, req) => {
-        ctx.linx match {
-          case t: m.MirroredElemTypes =>
-            val newReq = ContextRequest(RouteContext(ctx.context, m.fromTuple(t), ctx.template), req)
-            OptionT.liftF(run(newReq))
-        }
-      }
-    }*/
-
   def full[F[_], A](run: ContextRequest[F, A] => OptionT[F, Response[F]])(using Functor[F]): Handler[F, A] = Kleisli(run)
 
   def pure[F[_], A](response: Response[F])(using Applicative[F]): Handler[F, A] = Kleisli(_ => OptionT.some[F](response))
 }
 
-case class Route[F[_], A](template: Template, route: Handler[F, A])
+case class Route[F[_], A](template: Template, methods: Set[Method], route: Handler[F, A])
 
 type RoutedRequest[F[_], A, T] = ContextRequest[F, RouteContext[T, A]]
 type Routed[F[_], A, T] = Handler[F, RouteContext[T, A]]
-extension[F[_], A, T <: Tuple] (outer: Routed[F, A, T])(using Functor[F]) {
-  inline def toTyped[S <: Product](using m: Mirror.ProductOf[S]): Routed[F, A, S] =
-    Handler.full[F, RouteContext[S, A]] {
-      case r@ContextRequest(ctx, req) => {
-        val newReq = ContextRequest(RouteContext(ctx.context, Tuple.fromProduct(ctx.linx).asInstanceOf[T], ctx.template), req)
-        outer(newReq)
-      }
-    }
-}
 
 object Routed {
   def compile[F[_] : Monad, A, T <: Tuple](template: HLinx[T], methods: Map[Method, Routed[F, A, T]]): Route[F, A] =
-    Route(template.template, Handler.full[F, A] {
+    Route(template.template, methods.keySet, Handler.full[F, A] {
       case ContextRequest(a, req) =>
         val path = req.pathInfo
         template.extract(path) match

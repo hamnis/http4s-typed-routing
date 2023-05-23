@@ -17,6 +17,33 @@ type Handler[F[_], A] = ContextRoutes[A, F]
 object Handler {
   def apply[F[_], A](run: ContextRequest[F, A] => F[Response[F]])(using Functor[F]): Handler[F, A] = Kleisli(run).mapF(OptionT.liftF)
 
+  case class TypedPartiallyApplied[F[_], A]()(using F: Functor[F]) {
+    inline def apply[S <: Product](run: ContextRequest[F, RouteContext[S, A]] => F[Response[F]])(using m: Mirror.ProductOf[S]) = {
+      Handler.full[F, RouteContext[m.MirroredElemTypes, A]] {
+        case r@ContextRequest(ctx, req) => {
+          ctx.linx match {
+            case t: m.MirroredElemTypes =>
+              val newReq = ContextRequest(RouteContext(ctx.context, m.fromTuple(t), ctx.template), req)
+              OptionT.liftF(run(newReq))
+          }
+        }
+      }
+    }
+  }
+
+  def typed[F[_], A](using Functor[F]) = TypedPartiallyApplied[F, A]()
+
+  /*inline def typed[F[_], A, T, S <: Product](run: ContextRequest[F, RouteContext[S, A]] => F[Response[F]])(using f: Functor[F], m: Mirror.ProductOf[S]): Handler[F, RouteContext[T, A]] =
+    Handler.full[F, RouteContext[T, A]] {
+      case r@ContextRequest(ctx, req) => {
+        ctx.linx match {
+          case t: m.MirroredElemTypes =>
+            val newReq = ContextRequest(RouteContext(ctx.context, m.fromTuple(t), ctx.template), req)
+            OptionT.liftF(run(newReq))
+        }
+      }
+    }*/
+
   def full[F[_], A](run: ContextRequest[F, A] => OptionT[F, Response[F]])(using Functor[F]): Handler[F, A] = Kleisli(run)
 
   def pure[F[_], A](response: Response[F])(using Applicative[F]): Handler[F, A] = Kleisli(_ => OptionT.some[F](response))
@@ -100,15 +127,5 @@ object Routed {
     def withMethod(method: Method, routed: Routed[F, A, T]) = BuilderStep2(template, methods.updated(method, routed))
 
     def build(using M: Monad[F]): Route[F, A] = Routed.compile(template, methods)
-
-    /*def build(using M: Monad[F]): ContextRoutes[A, F] =
-      ContextRoutes.apply(req => OptionT.liftF(Routed.compile(template, methods).route.run(req)))
-
-    def buildHttpRoutes(using ev: Unit =:= A, M: Monad[F]): HttpRoutes[F] = {
-      val route = Routed.compile(template, methods)
-      Kleisli { req =>
-        OptionT.liftF(route.route(ContextRequest(ev(()), req)))
-      }
-    }*/
   }
 }

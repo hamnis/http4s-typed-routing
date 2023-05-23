@@ -22,11 +22,9 @@ object Main extends IOApp {
     val builder = Routed.httpRoutes[IO]
       .path(Root / "hello" / param[String]("who"))(
         _.get(
-          Handler {
+          Handler.typed[IO, Unit].apply[Greeter] {
             case ContextRequest(ctx, req) =>
-              //val greeter = ctx.to[Greeter]
-              //println(greeter)
-              IO(Response[IO]().withEntity(s"Hello ${ctx.linx}"))
+              IO(Response[IO]().withEntity(s"Hello ${ctx.linx.who}"))
           })
       )
       .path(Root / "hello" / "world")(

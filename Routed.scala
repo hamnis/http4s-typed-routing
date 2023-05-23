@@ -62,8 +62,8 @@ object Routed {
     inline def dynamic[S <: Product](using mp: Mirror.ProductOf[S])(linx: HLinx[mp.MirroredElemTypes])(f: BuilderStep1[F, A, mp.MirroredElemTypes, S] => BuilderStep2[F, A, mp.MirroredElemTypes, S]): BuilderStep0[F, A] =
       BuilderStep0(f(BuilderStep1(linx)).build(mp.fromTuple) :: routes)
 
-    def static(linx: HLinx[EmptyTuple])(f: BuilderStep1[F, A, EmptyTuple, EmptyTuple] => BuilderStep2[F, A, EmptyTuple, EmptyTuple]) =
-      BuilderStep0(f(BuilderStep1(linx)).build(identity) :: routes)
+    def static(linx: HLinx[EmptyTuple])(f: BuilderStep1[F, A, EmptyTuple, Unit] => BuilderStep2[F, A, EmptyTuple, Unit]) =
+      BuilderStep0(f(BuilderStep1(linx)).build(_ => ()) :: routes)
 
     def build(using M: Monad[F]): ContextRoutes[A, F] = {
       routes.sortBy(_.template).map(_.route: ContextRoutes[A, F]).foldK
@@ -79,7 +79,7 @@ object Routed {
     }
   }
 
-  sealed trait WithBuilderStep2[F[_], A, T <: Tuple, S <: Product] {
+  sealed trait WithBuilderStep2[F[_], A, T <: Tuple, S] {
     def withMethod(method: Method, routed: Routed[F, A, S]): BuilderStep2[F, A, T, S]
 
     def get(routed: Routed[F, A, S]) = withMethod(Method.GET, routed)
@@ -91,11 +91,11 @@ object Routed {
     def delete(routed: Routed[F, A, S]) = withMethod(Method.DELETE, routed)
   }
 
-  case class BuilderStep1[F[_], A, T <: Tuple, S <: Product](template: HLinx[T]) extends WithBuilderStep2[F, A, T, S] {
+  case class BuilderStep1[F[_], A, T <: Tuple, S](template: HLinx[T]) extends WithBuilderStep2[F, A, T, S] {
     def withMethod(method: Method, routed: Routed[F, A, S]) = BuilderStep2(template, Map(method -> routed))
   }
 
-  case class BuilderStep2[F[_], A, T <: Tuple, S <: Product](template: HLinx[T], methods: Map[Method, Routed[F, A, S]]) extends WithBuilderStep2[F, A, T, S] {
+  case class BuilderStep2[F[_], A, T <: Tuple, S](template: HLinx[T], methods: Map[Method, Routed[F, A, S]]) extends WithBuilderStep2[F, A, T, S] {
     def withMethod(method: Method, routed: Routed[F, A, S]) = BuilderStep2(template, methods.updated(method, routed))
 
     def build(toS: T => S)(using m: Monad[F]): Route[F, A] = Routed.compile(template, methods, toS)

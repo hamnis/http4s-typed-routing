@@ -9,14 +9,12 @@ import scala.deriving.Mirror
 enum CaptureFailure {
   def errorMessage: String = this match {
     case MissingPathParam(name) => s"Missing required path parameter [$name]"
-    case MissingStaticPath(name) => s"Missing required static path segment [$name]"
     case PathParamConvertFailure(name, msg) => s"Could not convert path parameter $name"
-    case EmptyPath => "Could not match on an empty path"
+    case NotFound => "Not found"
   }
 
   case MissingPathParam(name: String)
-  case MissingStaticPath(name: String)
-  case EmptyPath
+  case NotFound
   case PathParamConvertFailure(name: String, error: String)
 }
 
@@ -78,7 +76,7 @@ sealed trait HLinx[T <: Tuple] {
 
 case object Root extends HLinx[EmptyTuple] {
   private[hlinx] override def extractImpl(path: List[Uri.Path.Segment]): Either[CaptureFailure, EmptyTuple] =
-    if (path.isEmpty) Right(EmptyTuple) else Left(CaptureFailure.EmptyPath)
+    if (path.isEmpty) Right(EmptyTuple) else Left(CaptureFailure.NotFound)
 }
 
 case class Static[T <: Tuple](parent: HLinx[T], name: SegmentType.Static) extends HLinx[T] {
@@ -93,7 +91,7 @@ case class Static[T <: Tuple](parent: HLinx[T], name: SegmentType.Static) extend
     path match
       case CurrentSegment(head) :: rest =>
         parent.extractImpl(rest)
-      case _ => Left(CaptureFailure.MissingStaticPath(name.value))
+      case _ => Left(CaptureFailure.NotFound)
   }
 }
 

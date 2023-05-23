@@ -1,6 +1,7 @@
 //> using scala "3.2"
 //> using dep "org.http4s::http4s-core:0.23.19"
 //> using dep "org.http4s::http4s-ember-server:0.23.19"
+//> using dep "org.slf4j:slf4j-simple:2.0.7"
 
 package hlinx
 
@@ -10,25 +11,40 @@ import com.comcast.ip4s.port
 import org.http4s.*
 import org.http4s.implicits.*
 import org.http4s.ember.server.EmberServerBuilder
+import org.http4s.server.middleware.ErrorHandling
 
 import scala.concurrent.duration.*
 
 object Main extends IOApp {
   case class Greeter(who: String)
 
-
   override def run(args: List[String]): IO[ExitCode] = {
+    val builder = Routed.httpRoutes[IO]
+      .path(Root / "hello" / param[String]("who"))(
+        _.get(
+          Handler {
+            case ContextRequest(ctx, req) =>
+              //val greeter = ctx.to[Greeter]
+              //println(greeter)
+              IO(Response[IO]().withEntity(s"Hello ${ctx.linx}"))
+          })
+      )
+      .path(Root / "hello" / "world")(
+        _.get(
+          Handler {
+            case ContextRequest(ctx, req) =>
+              IO(Response[IO]().withEntity(s"Hello World"))
+          })
+      )
+    println(builder)
     EmberServerBuilder.default[IO]
       .withPort(port"8080")
       .withHttpApp(
-        Routed.httpRoutes[IO](Root / "hello" / param[String]("who"))
-          .get(
-            ContextRoutes {
-              case ContextRequest(((), ctx), req) =>
-                val greeter = ctx.to[Greeter]
-                OptionT.some[IO](Response[IO]().withEntity(s"Hello ${greeter.context.who}"))
-            }
-          ).buildHttpRoutes.orNotFound
+        ErrorHandling.Custom.recoverWith(builder.buildHttpRoutes.orNotFound) {
+          case t =>
+            t.printStackTrace()
+            IO(Response(Status.InternalServerError))
+        }
       )
       .build.useForever
   }

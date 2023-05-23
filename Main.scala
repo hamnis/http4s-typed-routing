@@ -22,39 +22,35 @@ object Main extends IOApp {
     val builder = Routed.httpRoutes[IO]
       .path(Root / "hello" / param[String]("who"))(
         _.get(
-          Handler.typed[IO, Unit].apply[Greeter] {
+          Routed.typed[IO, Unit].apply[Greeter] {
             case ContextRequest(ctx, req) =>
               IO(Response[IO]().withEntity(s"Hello ${ctx.linx.who}"))
-          })
+          }).post(
+          Routed.typed[IO, Unit].apply[Greeter] {
+            case ContextRequest(ctx, req) =>
+              req.as[String].flatMap(msg =>
+                IO(Response[IO]().withEntity(s"Hello ${ctx.linx.who}, with $msg"))
+              )
+          }
+        )
       )
       .path(Root / "hello" / "world")(
         _.get(
-          Handler {
+          Routed {
             case ContextRequest(ctx, req) =>
               IO(Response[IO]().withEntity(s"Hello World"))
           })
       )
-    println(builder)
-    EmberServerBuilder.default[IO]
-      .withPort(port"8080")
-      .withHttpApp(
-        ErrorHandling.Custom.recoverWith(builder.buildHttpRoutes.orNotFound) {
-          case t =>
-            t.printStackTrace()
-            IO(Response(Status.InternalServerError))
-        }
-      )
-      .build.useForever
+    builder.report >>
+      EmberServerBuilder.default[IO]
+        .withPort(port"8080")
+        .withHttpApp(
+          ErrorHandling.Custom.recoverWith(builder.buildHttpRoutes.orNotFound) {
+            case t =>
+              t.printStackTrace()
+              IO(Response(Status.InternalServerError))
+          }
+        )
+        .build.useForever
   }
-
-
-  /*val path = Root / "foo" / param[String]("bar") / param[Int]("baz")
-  val zz = hlinx("foo", param[String]("bar"), param[Int]("baz"))
-  //p"foo/${bar}/${baz}"
-  //println(zz.template)
-  println(path.asList)
-  val matchingpath = uri"/foo/bar/134"
-  println(path.to[Foo](matchingpath.path))*/
-
-
 }

@@ -20,21 +20,21 @@ object Main extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     val builder = Routed.httpRoutes[IO]
-      .path(Root / "hello" / param[String]("who"))(
+      .dynamic(Root / "hello" / param[String]("who"))(
         _.get(
-          Routed.typed[IO, Unit].apply[Greeter] {
+          Routed {
             case ContextRequest(ctx, req) =>
-              IO(Response[IO]().withEntity(s"Hello ${ctx.linx.who}"))
+              IO(Response[IO]().withEntity(s"Hello ${ctx.linx._1}"))
           }).post(
-          Routed.typed[IO, Unit].apply[Greeter] {
+          Routed {
             case ContextRequest(ctx, req) =>
               req.as[String].flatMap(msg =>
-                IO(Response[IO]().withEntity(s"Hello ${ctx.linx.who}, with $msg"))
+                IO(Response[IO]().withEntity(s"Hello ${ctx.linx._1}, with $msg"))
               )
           }
         )
       )
-      .path(Root / "hello" / "world")(
+      .static(Root / "hello" / "world")(
         _.get(
           Routed {
             case ContextRequest(ctx, req) =>

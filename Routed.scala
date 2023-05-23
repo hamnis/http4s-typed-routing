@@ -20,7 +20,7 @@ case class Route[F[_], A](template: Template, methods: Set[Method], route: Conte
 type Routed[F[_], A, T] = ContextRoutes[RouteContext[T, A], F]
 
 object Routed {
-  def compile[F[_] : Monad, A, T <: Tuple](template: HLinx[T], methods: Map[Method, Routed[F, A, T]]): Route[F, A] =
+  def compile[F[_] : Monad, A, T <: Tuple, S](template: HLinx[T], methods: Map[Method, Routed[F, A, S]], toS: T => S): Route[F, A] =
     Route(template.template, methods.keySet, full[F, A] {
       case ContextRequest(a, req) =>
         val path = req.pathInfo
@@ -31,35 +31,21 @@ object Routed {
           case Left(m: CaptureFailure.PathParamConvertFailure) =>
             OptionT.some[F](Response[F](Status.BadRequest).withEntity(m.errorMessage)) //todo: this needs work
           case Right(value) => {
-            val route: Routed[F, A, T] =
+            val route: Routed[F, A, S] =
               methods.getOrElse(
                 req.method,
                 Routed.pure(
                   Response[F](Status.MethodNotAllowed).putHeaders(Allow(methods.keySet))
                 )
               )
-            val templateContext = RouteContext(a, value, template.template)
-            route(ContextRequest(templateContext, req))
+            val templateContext = RouteContext(a, toS(value), template.template)
+            val previous = req.attributes.lookup(Request.Keys.PathInfoCaret).getOrElse(0)
+
+            route(ContextRequest(templateContext, req.withAttribute(Request.Keys.PathInfoCaret, previous + path.segments.size)))
           }
     })
 
   def apply[F[_], A, T](run: ContextRequest[F, RouteContext[T, A]] => F[Response[F]])(using Functor[F]): Routed[F, A, T] = Kleisli(run).mapF(OptionT.liftF)
-
-  case class TypedPartiallyApplied[F[_], A]()(using F: Functor[F]) {
-    inline def apply[S <: Product](run: ContextRequest[F, RouteContext[S, A]] => F[Response[F]])(using m: Mirror.ProductOf[S]) = {
-      full[F, RouteContext[m.MirroredElemTypes, A]] {
-        case r@ContextRequest(ctx, req) => {
-          ctx.linx match {
-            case t: m.MirroredElemTypes =>
-              val newReq = ContextRequest(RouteContext(ctx.context, m.fromTuple(t), ctx.template), req)
-              OptionT.liftF(run(newReq))
-          }
-        }
-      }
-    }
-  }
-
-  def typed[F[_], A](using Functor[F]) = TypedPartiallyApplied[F, A]()
 
   private[hlinx] def full[F[_], A](run: ContextRequest[F, A] => OptionT[F, Response[F]])(using Functor[F]): ContextRoutes[A, F] = Kleisli(run)
 
@@ -70,8 +56,18 @@ object Routed {
   def httpRoutes[F[_]](using Monad[F]) = BuilderStep0[F, Unit](Nil)
 
   case class BuilderStep0[F[_], A](routes: List[Route[F, A]])(using Monad[F]) {
-    def path[T <: Tuple](linx: HLinx[T])(f: BuilderStep1[F, A, T] => BuilderStep2[F, A, T]): BuilderStep0[F, A] =
-      copy(f(BuilderStep1(linx)).build :: routes)
+    case class Partial[T <: Tuple](linx: HLinx[T])(using Monad[F]) {
+      def to[S <: Product](f: BuilderStep1[F, A, T, S] => BuilderStep2[F, A, T, S])(using mp: Mirror.ProductOf[S]): BuilderStep0[F, A] =
+        BuilderStep0(f(BuilderStep1(linx)).build(t => mp.fromTuple(t.asInstanceOf[mp.MirroredElemTypes])) :: routes)
+
+      def apply(f: BuilderStep1[F, A, T, T] => BuilderStep2[F, A, T, T]): BuilderStep0[F, A] =
+        BuilderStep0(f(BuilderStep1(linx)).build(identity) :: routes)
+    }
+
+    def dynamic[T <: Tuple](linx: HLinx[T]): Partial[T] = Partial(linx)
+
+    def static(linx: HLinx[EmptyTuple])(f: BuilderStep1[F, A, EmptyTuple, EmptyTuple] => BuilderStep2[F, A, EmptyTuple, EmptyTuple]) =
+      BuilderStep0(f(BuilderStep1(linx)).build(identity) :: routes)
 
     def build(using M: Monad[F]): ContextRoutes[A, F] = {
       routes.sortBy(_.template).map(_.route: ContextRoutes[A, F]).foldK
@@ -87,25 +83,25 @@ object Routed {
     }
   }
 
-  sealed trait WithBuilderStep2[F[_], A, T <: Tuple] {
-    def withMethod(method: Method, routed: Routed[F, A, T]): BuilderStep2[F, A, T]
+  sealed trait WithBuilderStep2[F[_], A, T <: Tuple, S <: Product] {
+    def withMethod(method: Method, routed: Routed[F, A, S]): BuilderStep2[F, A, T, S]
 
-    def get(routed: Routed[F, A, T]) = withMethod(Method.GET, routed)
+    def get(routed: Routed[F, A, S]) = withMethod(Method.GET, routed)
 
-    def post(routed: Routed[F, A, T]) = withMethod(Method.POST, routed)
+    def post(routed: Routed[F, A, S]) = withMethod(Method.POST, routed)
 
-    def put(routed: Routed[F, A, T]) = withMethod(Method.PUT, routed)
+    def put(routed: Routed[F, A, S]) = withMethod(Method.PUT, routed)
 
-    def delete(routed: Routed[F, A, T]) = withMethod(Method.DELETE, routed)
+    def delete(routed: Routed[F, A, S]) = withMethod(Method.DELETE, routed)
   }
 
-  case class BuilderStep1[F[_], A, T <: Tuple](template: HLinx[T]) extends WithBuilderStep2[F, A, T] {
-    def withMethod(method: Method, routed: Routed[F, A, T]) = BuilderStep2(template, Map(method -> routed))
+  case class BuilderStep1[F[_], A, T <: Tuple, S <: Product](template: HLinx[T]) extends WithBuilderStep2[F, A, T, S] {
+    def withMethod(method: Method, routed: Routed[F, A, S]) = BuilderStep2(template, Map(method -> routed))
   }
 
-  case class BuilderStep2[F[_], A, T <: Tuple](template: HLinx[T], methods: Map[Method, Routed[F, A, T]]) extends WithBuilderStep2[F, A, T] {
-    def withMethod(method: Method, routed: Routed[F, A, T]) = BuilderStep2(template, methods.updated(method, routed))
+  case class BuilderStep2[F[_], A, T <: Tuple, S <: Product](template: HLinx[T], methods: Map[Method, Routed[F, A, S]]) extends WithBuilderStep2[F, A, T, S] {
+    def withMethod(method: Method, routed: Routed[F, A, S]) = BuilderStep2(template, methods.updated(method, routed))
 
-    def build(using M: Monad[F]): Route[F, A] = Routed.compile(template, methods)
+    def build(toS: T => S)(using m: Monad[F]): Route[F, A] = Routed.compile(template, methods, toS)
   }
 }

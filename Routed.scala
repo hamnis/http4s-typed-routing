@@ -56,15 +56,11 @@ object Routed {
   def httpRoutes[F[_]](using Monad[F]) = BuilderStep0[F, Unit](Nil)
 
   case class BuilderStep0[F[_], A](routes: List[Route[F, A]])(using Monad[F]) {
-    case class Partial[T <: Tuple](linx: HLinx[T])(using Monad[F]) {
-      def to[S <: Product](f: BuilderStep1[F, A, T, S] => BuilderStep2[F, A, T, S])(using mp: Mirror.ProductOf[S]): BuilderStep0[F, A] =
-        BuilderStep0(f(BuilderStep1(linx)).build(t => mp.fromTuple(t.asInstanceOf[mp.MirroredElemTypes])) :: routes)
+    def dynamic[T <: Tuple](linx: HLinx[T])(f: BuilderStep1[F, A, T, T] => BuilderStep2[F, A, T, T]): BuilderStep0[F, A] =
+      BuilderStep0(f(BuilderStep1(linx)).build(identity) :: routes)
 
-      def apply(f: BuilderStep1[F, A, T, T] => BuilderStep2[F, A, T, T]): BuilderStep0[F, A] =
-        BuilderStep0(f(BuilderStep1(linx)).build(identity) :: routes)
-    }
-
-    def dynamic[T <: Tuple](linx: HLinx[T]): Partial[T] = Partial(linx)
+    inline def dynamic[S <: Product](using mp: Mirror.ProductOf[S])(linx: HLinx[mp.MirroredElemTypes])(f: BuilderStep1[F, A, mp.MirroredElemTypes, S] => BuilderStep2[F, A, mp.MirroredElemTypes, S]): BuilderStep0[F, A] =
+      BuilderStep0(f(BuilderStep1(linx)).build(mp.fromTuple) :: routes)
 
     def static(linx: HLinx[EmptyTuple])(f: BuilderStep1[F, A, EmptyTuple, EmptyTuple] => BuilderStep2[F, A, EmptyTuple, EmptyTuple]) =
       BuilderStep0(f(BuilderStep1(linx)).build(identity) :: routes)

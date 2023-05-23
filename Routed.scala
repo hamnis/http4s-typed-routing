@@ -21,7 +21,7 @@ type Routed[F[_], A, T] = ContextRoutes[RouteContext[T, A], F]
 
 object Routed {
   def compile[F[_] : Monad, A, T <: Tuple, S](template: HLinx[T], methods: Map[Method, Routed[F, A, S]], toS: T => S): Route[F, A] =
-    Route(template.template, methods.keySet, full[F, A] {
+    Route(template.template, methods.keySet, ContextRoutes[A, F] {
       case ContextRequest(a, req) =>
         val path = req.pathInfo
         template.extract(path) match
@@ -34,7 +34,7 @@ object Routed {
             val route: Routed[F, A, S] =
               methods.getOrElse(
                 req.method,
-                Routed.pure(
+                Routed.response(
                   Response[F](Status.MethodNotAllowed).putHeaders(Allow(methods.keySet))
                 )
               )
@@ -47,9 +47,7 @@ object Routed {
 
   def apply[F[_], A, T](run: ContextRequest[F, RouteContext[T, A]] => F[Response[F]])(using Functor[F]): Routed[F, A, T] = Kleisli(run).mapF(OptionT.liftF)
 
-  private[hlinx] def full[F[_], A](run: ContextRequest[F, A] => OptionT[F, Response[F]])(using Functor[F]): ContextRoutes[A, F] = Kleisli(run)
-
-  def pure[F[_], A, T](response: Response[F])(using Applicative[F]): Routed[F, A, T] = Kleisli(_ => OptionT.some[F](response))
+  def response[F[_], A, T](response: Response[F])(using Applicative[F]): Routed[F, A, T] = Kleisli(_ => OptionT.some[F](response))
 
   def builder[F[_], A](using Monad[F]) = BuilderStep0[F, A](Nil)
 

@@ -18,6 +18,8 @@ import scala.concurrent.duration.*
 object Main extends IOApp {
   case class Greeter(who: String)
 
+  given[F[_], A]: Conversion[ContextRequest[F, A], Request[F]] = _.req
+
   override def run(args: List[String]): IO[ExitCode] = {
     val getDynamicRoute = Routed.httpRoutes[IO, Greeter] {
       r => IO(Response[IO]().withEntity(s"Hello ${r.context.linx.who}"))
@@ -27,19 +29,16 @@ object Main extends IOApp {
       .dynamic[Greeter](Root / "hello" / param[String]("who"))(
         _.get(getDynamicRoute).post(
           Routed {
-            case ContextRequest(ctx, req) =>
+            req =>
               req.as[String].flatMap(msg =>
-                IO(Response[IO]().withEntity(s"Hello ${ctx.linx.who}, with $msg"))
+                IO(Response[IO]().withEntity(s"Hello ${req.context.linx.who}, with $msg"))
               )
           }
         )
       )
       .static(Root / "hello" / "world")(
         _.get(
-          Routed {
-            case ContextRequest(ctx, req) =>
-              IO(Response[IO]().withEntity(s"Hello World"))
-          })
+          Routed.response(Response[IO]().withEntity(s"Hello World")))
       )
     builder.report >>
       EmberServerBuilder.default[IO]

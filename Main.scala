@@ -45,11 +45,7 @@ object Main extends IOApp {
       EmberServerBuilder.default[IO]
         .withPort(port"8080")
         .withHttpApp(
-          ErrorHandling.Custom.recoverWith(builder.buildHttpRoutes.orNotFound) {
-            case t =>
-              t.printStackTrace()
-              IO(Response(Status.InternalServerError))
-          }
+          builder.buildHttpRoutes.orNotFound
         )
         .build.useForever
   }

@@ -19,11 +19,11 @@ import org.http4s.server.middleware.ErrorHandling
 
 import scala.concurrent.duration.*
 
-object Main extends IOApp with ContextRoutesBuilderDsl[IO, Unit] {
+object Main extends IOApp with ContextRoutesBuilderDsl[IO] {
   case class Greeter(who: String)
 
   override def run(args: List[String]): IO[ExitCode] = {
-    val b = newBuilder
+    val b = newHttpRoutesBuilder
       .path[Greeter](Root / "hello" / param[String]("who"))(
         _.get(
           r => Ok(s"Hello ${r.context.linx.who}")

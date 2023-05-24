@@ -2,6 +2,7 @@ package hlinx
 
 import cats.arrow.FunctionK
 import cats.{Monad, ~>}
+import cats.effect.IO
 import org.http4s.{ContextRequest, Request}
 import org.http4s.dsl.impl.{Responses, Statuses}
 
@@ -14,3 +15,5 @@ trait ContextRoutesBuilderDsl[F[_] : Monad] extends Statuses with Responses[F, F
 
   def newHttpRoutesBuilder = Route.builder[F, Unit]
 }
+
+object iodsl extends ContextRoutesBuilderDsl[IO]

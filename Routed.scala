@@ -50,24 +50,28 @@ object Route {
     def withMethod(method: Method, routed: Routed[F, A, S]): BuilderStep2[F, A, T, S]
 
     @targetName("withMethodFn")
-    final def withMethod(method: Method, routed: RoutedFn[F, A, S])(using Functor[F]): BuilderStep2[F, A, T, S] =
+    final def withMethod(method: Method, routed: RoutedFn[F, A, S])(using Monad[F]): BuilderStep2[F, A, T, S] =
       withMethod(method, Routed.apply(routed))
 
     final def get(routed: Routed[F, A, S]) = withMethod(Method.GET, routed)
 
-    final def get(routed: RoutedFn[F, A, S])(using Functor[F]) = withMethod(Method.GET, routed)
+    @targetName("getFn")
+    final def get(routed: RoutedFn[F, A, S])(using Monad[F]) = withMethod(Method.GET, routed)
 
     final def post(routed: Routed[F, A, S]) = withMethod(Method.POST, routed)
 
-    final def post(routed: RoutedFn[F, A, S])(using Functor[F]) = withMethod(Method.POST, routed)
+    @targetName("postFn")
+    final def post(routed: RoutedFn[F, A, S])(using Monad[F]) = withMethod(Method.POST, routed)
 
     final def put(routed: Routed[F, A, S]) = withMethod(Method.PUT, routed)
 
-    final def put(routed: RoutedFn[F, A, S])(using Functor[F]) = withMethod(Method.PUT, routed)
+    @targetName("putFn")
+    final def put(routed: RoutedFn[F, A, S])(using Monad[F]) = withMethod(Method.PUT, routed)
 
     final def delete(routed: Routed[F, A, S]) = withMethod(Method.DELETE, routed)
 
-    final def delete(routed: RoutedFn[F, A, S])(using Functor[F]) = withMethod(Method.DELETE, routed)
+    @targetName("deleteFn")
+    final def delete(routed: RoutedFn[F, A, S])(using Monad[F]) = withMethod(Method.DELETE, routed)
   }
 
   case class BuilderStep1[F[_], A, T <: Tuple, S](template: HLinx[T]) extends WithBuilderStep2[F, A, T, S] {
@@ -110,9 +114,10 @@ object Routed {
           }
     })
 
-  def apply[F[_], A, T](run: ContextRequest[F, RouteContext[T, A]] => F[Response[F]])(using Functor[F]): Routed[F, A, T] = Kleisli(run).mapF(OptionT.liftF)
+  def apply[F[_], A, T](run: ContextRequest[F, RouteContext[T, A]] => F[Response[F]])(using Monad[F]): Routed[F, A, T] =
+    ContextRoutes(req => OptionT.liftF(run(req)))
 
-  def httpRoutes[F[_], T](using Functor[F]) = apply[F, Unit, T] _
+  def httpRoutes[F[_], T](using Monad[F]) = apply[F, Unit, T] _
 
   def response[F[_], A, T](response: Response[F])(using Applicative[F]): Routed[F, A, T] = Kleisli(_ => OptionT.some[F](response))
 }

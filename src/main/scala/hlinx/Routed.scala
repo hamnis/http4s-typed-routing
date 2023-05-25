@@ -32,13 +32,13 @@ object Route {
     //def path(linx: HLinx[EmptyTuple])(f: BuilderStep1[F, A, EmptyTuple, Unit] => BuilderStep2[F, A, EmptyTuple, Unit]) =
     //  BuilderStep0(f(BuilderStep1(linx)).build(_ => ()) :: routes)
 
-    def build(using M: Monad[F]): ContextRoutes[A, F] = {
+    def build: ContextRoutes[A, F] = {
       routes.sortBy(_.template).map(_.route: ContextRoutes[A, F]).foldK
     }
 
     def report(using C: Console[F]) = C.println("Registered routes:") >> C.println(routes.map(_.report).mkString("\n"))
 
-    def buildHttpRoutes(using ev: Unit =:= A, M: Monad[F]): HttpRoutes[F] = {
+    def buildHttpRoutes(using ev: Unit =:= A): HttpRoutes[F] = {
       val sorted = build
       Kleisli { req =>
         sorted.run(ContextRequest(ev(()), req))
@@ -114,10 +114,8 @@ object Routed {
           }
     })
 
-  def apply[F[_], A, T](run: ContextRequest[F, RouteContext[T, A]] => F[Response[F]])(using Monad[F]): Routed[F, A, T] =
+  def apply[F[_], A, T](run: RoutedFn[F, A, T])(using Monad[F]): Routed[F, A, T] =
     ContextRoutes(req => OptionT.liftF(run(req)))
-
-  def httpRoutes[F[_], T](using Monad[F]) = apply[F, Unit, T] _
 
   def response[F[_], A, T](response: Response[F])(using Applicative[F]): Routed[F, A, T] = Kleisli(_ => OptionT.some[F](response))
 }
